@@ -18,6 +18,7 @@ permissions:
 
 env:
   APP_ID: com.nuvio.app.livetv.atv
+  APP_LABEL: Nuvio Live TV
   KEYSTORE_BASE64: ${{ secrets.LIVE_TV_KEYSTORE_BASE64 }}
   KEYSTORE_PASSWORD: ${{ secrets.LIVE_TV_KEYSTORE_PASSWORD }}
   LOCAL_PROPERTIES_BASE64: ${{ secrets.LOCAL_PROPERTIES_BASE64 }}
@@ -27,9 +28,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
+      # No submodules: NuvioTV has none (only a stale pointer), and upstream doesn't fetch them either.
       - uses: actions/checkout@v6
-        with:
-          submodules: recursive
 
       - uses: actions/setup-java@v5
         with:
@@ -57,18 +57,31 @@ jobs:
           echo "NUVIO_RELEASE_STORE_PASSWORD=${password}" >> "$GITHUB_ENV"
           if [[ -n "${LOCAL_PROPERTIES_BASE64}" ]]; then
             printf '%s' "${LOCAL_PROPERTIES_BASE64}" | base64 --decode > local.properties
+            # The CI machine's SDK/keystore paths must not leak in from the stored file.
+            sed -i -E '/^[[:space:]]*(sdk\.dir|NUVIO_RELEASE_STORE_FILE)[[:space:]]*=/d' local.properties
           else
             echo "::warning::No LOCAL_PROPERTIES_BASE64 secret; Trakt and other keyed features will be empty."
           fi
 
+      # Build-time only edits (not committed): app id, update source and app name.
+      - name: Set app id, update source and app name
+        run: |
+          set -euo pipefail
+          f=app/build.gradle.kts
+          sed -i "s|applicationId = \"com.nuvio.tv\"|applicationId = \"${APP_ID}\"|" "$f"
+          sed -i "s|\\\\\"NuvioMedia\\\\\"|\\\\\"${GITHUB_REPOSITORY_OWNER}\\\\\"|" "$f"
+          grep -n "applicationId = \"${APP_ID}\"" "$f"
+          grep -n "GITHUB_OWNER" "$f"
+          grep -q "applicationId = \"${APP_ID}\"" "$f"
+          grep "GITHUB_OWNER" "$f" | grep -q "${GITHUB_REPOSITORY_OWNER}"
+          # Change the app name in every language file so the launcher shows "Nuvio Live TV".
+          find app/src -path '*/res/values*/strings.xml' -exec sed -i -E "s|(<string name=\"app_name\"[^>]*>)[^<]*(</string>)|\1${APP_LABEL}\2|" {} +
+          grep -rn 'name="app_name"' app/src/main/res/values/strings.xml
+
       - name: Build the Android TV APK
         run: |
           chmod +x ./gradlew
-          ./gradlew :app:assembleFullRelease \
-            -Pnuvio.applicationId="${APP_ID}" \
-            -Pnuvio.updateOwner="${GITHUB_REPOSITORY_OWNER}" \
-            -Pnuvio.updateRepo=NuvioTV \
-            --stacktrace
+          ./gradlew :app:assembleFullRelease --stacktrace
 
       - name: Collect the APK
         run: |
