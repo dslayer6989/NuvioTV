@@ -1,0 +1,100 @@
+name: Build Nuvio Live TV (Android TV)
+
+# Our own Android TV build. The official upstream workflow (android-release.yml) is left alone.
+on:
+  workflow_dispatch:
+  # TEMPORARY: lets us start this from the dev branch before the file exists on main.
+  # Remove this block (and .github/livetv/run-build.txt) once the workflow is merged to main.
+  push:
+    branches: [dev]
+    paths: ['.github/livetv/run-build.txt']
+
+concurrency:
+  group: live-tv-tv-build
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  APP_ID: com.nuvio.app.livetv.atv
+  KEYSTORE_BASE64: ${{ secrets.LIVE_TV_KEYSTORE_BASE64 }}
+  KEYSTORE_PASSWORD: ${{ secrets.LIVE_TV_KEYSTORE_PASSWORD }}
+  LOCAL_PROPERTIES_BASE64: ${{ secrets.LOCAL_PROPERTIES_BASE64 }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Prepare signing key and optional local.properties
+        run: |
+          set -euo pipefail
+          keystore="${RUNNER_TEMP}/livetv.jks"
+          if [[ -n "${KEYSTORE_BASE64}" && -n "${KEYSTORE_PASSWORD}" ]]; then
+            printf '%s' "${KEYSTORE_BASE64}" | base64 --decode > "${keystore}"
+            password="${KEYSTORE_PASSWORD}"
+          else
+            echo "::warning::No LIVE_TV_KEYSTORE secrets set; using a one-off key. Installing a later build will require uninstalling this one first."
+            password="livetv-temp-key"
+            keytool -genkeypair -noprompt -keystore "${keystore}" -storepass "${password}" -keypass "${password}" \
+              -alias livetv -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Nuvio Live TV"
+          fi
+          echo "NUVIO_RELEASE_STORE_FILE=${keystore}" >> "$GITHUB_ENV"
+          echo "NUVIO_RELEASE_KEY_ALIAS=livetv" >> "$GITHUB_ENV"
+          echo "NUVIO_RELEASE_KEY_PASSWORD=${password}" >> "$GITHUB_ENV"
+          echo "NUVIO_RELEASE_STORE_PASSWORD=${password}" >> "$GITHUB_ENV"
+          if [[ -n "${LOCAL_PROPERTIES_BASE64}" ]]; then
+            printf '%s' "${LOCAL_PROPERTIES_BASE64}" | base64 --decode > local.properties
+          else
+            echo "::warning::No LOCAL_PROPERTIES_BASE64 secret; Trakt and other keyed features will be empty."
+          fi
+
+      - name: Set our app id and update source (build-time only, nothing committed)
+        run: |
+          set -euo pipefail
+          f=app/build.gradle.kts
+          sed -i "s#applicationId = \"com.nuvio.tv\"#applicationId = \"${APP_ID}\"#" "$f"
+          sed -i "s#\"\\\\\"NuvioMedia\\\\\"\"#\"\\\\\"${GITHUB_REPOSITORY_OWNER}\\\\\"\"#" "$f"
+          grep -n "applicationId = \|GITHUB_OWNER\|GITHUB_REPO" "$f"
+          grep -q "applicationId = \"${APP_ID}\"" "$f"
+          grep -q "GITHUB_OWNER.*${GITHUB_REPOSITORY_OWNER}" "$f"
+
+      - name: Build the Android TV APK
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:assembleFullRelease --stacktrace
+
+      - name: Collect the APK
+        run: |
+          set -euo pipefail
+          ls -la app/build/outputs/apk/full/release/
+          apk="$(ls app/build/outputs/apk/full/release/*universal*.apk | head -n 1)"
+          mkdir -p dist
+          cp "${apk}" dist/Nuvio-LiveTV-Android-TV.apk
+          "${ANDROID_HOME}"/build-tools/*/aapt dump badging dist/Nuvio-LiveTV-Android-TV.apk | grep -E "package:|application-label:|leanback" | head
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-tv
+          path: dist/Nuvio-LiveTV-Android-TV.apk
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="live-tv-tv-${GITHUB_RUN_NUMBER}"
+          printf 'Nuvio Live TV for Android TV, build %s.\nBuilt from commit %s. Installs as "Nuvio Live TV" next to official Nuvio.\n' "${GITHUB_RUN_NUMBER}" "${GITHUB_SHA}" > notes.md
+          gh release create "${tag}" dist/Nuvio-LiveTV-Android-TV.apk --title "Nuvio Live TV (Android TV) — build ${GITHUB_RUN_NUMBER}" --notes-file notes.md --target "${GITHUB_SHA}" --latest
