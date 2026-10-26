@@ -90,8 +90,12 @@ jobs:
           apk="$(ls app/build/outputs/apk/full/release/*universal*.apk | head -n 1)"
           mkdir -p dist
           cp "${apk}" dist/Nuvio-LiveTV-Android-TV.apk
-          "${ANDROID_HOME}"/build-tools/*/aapt dump badging dist/Nuvio-LiveTV-Android-TV.apk | grep -E "package:|application-label:|leanback" | head
-          "${ANDROID_HOME}"/build-tools/*/aapt dump badging dist/Nuvio-LiveTV-Android-TV.apk | grep -q "package: name='${APP_ID}'"
+          # The runner has several build-tools versions; use only the newest aapt.
+          aapt="$(ls -d "${ANDROID_HOME}"/build-tools/*/aapt | sort -V | tail -n 1)"
+          echo "Using ${aapt}"
+          "${aapt}" dump badging dist/Nuvio-LiveTV-Android-TV.apk > badging.txt
+          grep -E "package:|application-label:|leanback" badging.txt | head
+          grep -q "package: name='${APP_ID}'" badging.txt
 
       - uses: actions/upload-artifact@v4
         with:
