@@ -150,6 +150,11 @@ class LiveTvPlayerSession @Inject constructor(
     fun clear() {
         _state.value = null
     }
+
+    /** Clears the session only if no newer channel or source has replaced it since [generation]. */
+    fun clearIfGeneration(generation: Long) {
+        if (_state.value?.generation == generation) _state.value = null
+    }
 }
 
 /** Short source label for notifications, e.g. "Backup 1". */

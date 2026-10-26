@@ -33,7 +33,11 @@ import com.nuvio.tv.ui.screens.detail.MetaDetailsScreen
 import com.nuvio.tv.ui.screens.home.HomeScreen
 import com.nuvio.tv.ui.screens.addon.AddonManagerScreen
 import com.nuvio.tv.ui.screens.addon.CatalogOrderScreen
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.nuvio.tv.livetv.ui.LiveTvPlayRequestHandler
 import com.nuvio.tv.livetv.ui.LiveTvScreen
+import com.nuvio.tv.livetv.ui.LiveTvShellViewModel
+import com.nuvio.tv.livetv.ui.rememberPlayerLiveTvControls
 import com.nuvio.tv.ui.screens.library.LibraryScreen
 import com.nuvio.tv.ui.screens.player.PlayerExitReason
 import com.nuvio.tv.ui.screens.player.PlayerScreen
@@ -107,6 +111,17 @@ private fun PlaybackNavHost(
             )
         )
     }
+
+    val liveTvShell: LiveTvShellViewModel = hiltViewModel()
+    // Live TV: channel requests from any screen open the player; channel up/down and backup
+    // sources replace the player that is already open.
+    val openLiveTvPlayer: (String) -> Unit = { route ->
+        val playerIsOpen = navController.currentDestination?.route?.startsWith("player/") == true
+        navController.navigate(route) {
+            if (playerIsOpen) popUpTo(Screen.Player.route) { inclusive = true }
+        }
+    }
+    LiveTvPlayRequestHandler(shell = liveTvShell, openPlayer = openLiveTvPlayer)
 
     NavHost(
         navController = navController,
@@ -886,9 +901,21 @@ private fun PlaybackNavHost(
                 }
             }
 
+            val liveTvControls = rememberPlayerLiveTvControls(
+                shell = liveTvShell,
+                contentType = backStackEntry.arguments?.getString("contentType"),
+                contentId = backStackEntry.arguments?.getString("contentId"),
+                openPlayer = openLiveTvPlayer
+            )
             PlayerScreen(
+                liveTv = liveTvControls,
                 onBackPress = { currentVideoId, currentSeason, currentEpisode, autoPlayEnabled, playbackCompleted ->
                     val args = backStackEntry.arguments
+                    if (liveTvControls != null) {
+                        // Live TV: Back goes straight back to wherever the channel was started from.
+                        navController.popBackStack()
+                        return@PlayerScreen
+                    }
                     val initialSeason = args?.getString("season")?.toIntOrNull()
                     val initialEpisode = args?.getString("episode")?.toIntOrNull()
                     val episodeChangedInPlace = (currentSeason != null || currentEpisode != null) &&

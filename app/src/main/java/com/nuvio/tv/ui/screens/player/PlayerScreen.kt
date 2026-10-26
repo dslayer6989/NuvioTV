@@ -187,9 +187,18 @@ fun PlayerScreen(
     onPlaybackEnded: ((nextVideoId: String?, nextSeason: Int?, nextEpisode: Int?, exitReason: PlayerExitReason?) -> Unit)? = null,
     onPlayRecommendation: (PostPlayRecommendation, manualSelection: Boolean) -> Unit = { _, _ -> },
     onOpenRecommendationDetails: (PostPlayRecommendation) -> Unit = {},
-    onOpenPartyMedia: (PartyMedia) -> Unit = {}
+    onOpenPartyMedia: (PartyMedia) -> Unit = {},
+    liveTv: PlayerLiveTvControls? = null
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var showLiveTvOverlay by remember { mutableStateOf(false) }
+    val currentLiveTv by rememberUpdatedState(liveTv)
+    LaunchedEffect(uiState.error) {
+        if (uiState.error != null) currentLiveTv?.onSourceFailed?.invoke()
+    }
+    LaunchedEffect(uiState.isPlaying) {
+        if (uiState.isPlaying) currentLiveTv?.onPlaybackStarted?.invoke()
+    }
     val partyState by viewModel.party.state.collectAsState()
     val partyPlayback by viewModel.party.playback.collectAsState()
     val partyAvailable by viewModel.party.available.collectAsState()
@@ -327,6 +336,10 @@ fun PlayerScreen(
 
     val handleBackPress = handleBackPress@{
         if (externalHandoffInProgress) return@handleBackPress
+        if (showLiveTvOverlay) {
+            showLiveTvOverlay = false
+            return@handleBackPress
+        }
         if (postPlayRecommendationState.canReturnToPlayer && !uiState.playbackEnded) {
             returnToPlayerFromPostPlay()
             viewModel.hideControls()
@@ -792,6 +805,7 @@ fun PlayerScreen(
                         shouldConfirmNextEpisodeOnEnd ||
                         uiState.postPlayMode is PostPlayMode.StillWatching ||
                         postPlayRecommendationState.isVisible ||
+                        showLiveTvOverlay ||
                         uiState.error != null
                 if (panelOrDialogOpen) return@onKeyEvent false
 
@@ -932,6 +946,35 @@ fun PlayerScreen(
                                 )
                             )
                             true
+                        }
+                        KeyEvent.KEYCODE_CHANNEL_UP,
+                        KeyEvent.KEYCODE_PAGE_UP -> {
+                            val controls = liveTv
+                            if (controls != null) {
+                                controls.onChannelStep(1)
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        KeyEvent.KEYCODE_CHANNEL_DOWN,
+                        KeyEvent.KEYCODE_PAGE_DOWN -> {
+                            val controls = liveTv
+                            if (controls != null) {
+                                controls.onChannelStep(-1)
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        KeyEvent.KEYCODE_GUIDE,
+                        KeyEvent.KEYCODE_MENU -> {
+                            if (liveTv != null) {
+                                showLiveTvOverlay = true
+                                true
+                            } else {
+                                false
+                            }
                         }
                         KeyEvent.KEYCODE_INFO -> {
                             if (uiState.showStreamInfoOverlay) {
@@ -1271,6 +1314,10 @@ fun PlayerScreen(
                 onReport = { viewModel.onEvent(PlayerEvent.OnReportPlaybackIssue) },
                 onBack = exitPlayerFromError
             )
+        }
+
+        if (liveTv != null && showLiveTvOverlay && uiState.error == null) {
+            liveTv.overlay { showLiveTvOverlay = false }
         }
 
         val endPromptEpisode = nextEpisodeForEndPrompt.takeIf { shouldConfirmNextEpisodeOnEnd }
