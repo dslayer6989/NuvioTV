@@ -19,6 +19,10 @@ permissions:
 env:
   APP_ID: com.nuvio.app.livetv.atv
   APP_LABEL: Nuvio Live TV
+  # Nuvio's public sign-in values, from https://nuvio.tv/docs#base-urls (same ones NuvioDesktop uses).
+  # They are used only when LOCAL_PROPERTIES_BASE64 does not already set them.
+  NUVIO_API_URL: https://api.nuvio.tv
+  NUVIO_API_KEY: sb_publishable_1Clq8rlTVACkdcZuqr6_AD__xUUC_EN
   KEYSTORE_BASE64: ${{ secrets.LIVE_TV_KEYSTORE_BASE64 }}
   KEYSTORE_PASSWORD: ${{ secrets.LIVE_TV_KEYSTORE_PASSWORD }}
   LOCAL_PROPERTIES_BASE64: ${{ secrets.LOCAL_PROPERTIES_BASE64 }}
@@ -61,7 +65,17 @@ jobs:
             sed -i -E '/^[[:space:]]*(sdk\.dir|NUVIO_RELEASE_STORE_FILE)[[:space:]]*=/d' local.properties
           else
             echo "::warning::No LOCAL_PROPERTIES_BASE64 secret; Trakt and other keyed features will be empty."
+            : > local.properties
           fi
+          # Make sure sign-in is always pointed at Nuvio's real servers (never empty/localhost).
+          echo >> local.properties
+          for pair in "NUVIO_SUPABASE_URL=${NUVIO_API_URL}" "NUVIO_SUPABASE_ANON_KEY=${NUVIO_API_KEY}"; do
+            key="${pair%%=*}"
+            if ! grep -qE "^[[:space:]]*${key}[[:space:]]*=[[:space:]]*[^[:space:]]" local.properties; then
+              echo "Using default for ${key}"
+              echo "${pair}" >> local.properties
+            fi
+          done
 
       # Build-time only edits (not committed): app id, update source and app name.
       - name: Set app id, update source and app name
