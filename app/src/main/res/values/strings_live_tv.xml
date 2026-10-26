@@ -31,7 +31,7 @@
     <string name="live_tv_sort_ending_soon">Ending soon</string>
     <string name="live_tv_sort_just_started">Just started</string>
     <string name="live_tv_loading">Loading the guide…</string>
-    <string name="live_tv_error_title">Couldn't load Live TV</string>
+    <string name="live_tv_error_title">Couldn\'t load Live TV</string>
     <string name="live_tv_retry">Try again</string>
     <string name="live_tv_empty_group">No channels here yet</string>
     <string name="live_tv_empty_favorites">Star a channel to pin it here</string>
