@@ -99,7 +99,7 @@ internal fun LiveTvGuideGrid(
             visibleEndMs = visibleEndMs,
             pxPerMs = pxPerMs
         )
-        LazyColumn(state = listState, contentPadding = contentPadding, modifier = Modifier.fillMaxSize()) {
+        LazyColumn(state = listState, contentPadding = contentPadding, modifier = Modifier.weight(1f).fillMaxWidth()) {
             itemsIndexed(channels, key = { _, channel -> channel.id }) { index, channel ->
                 LiveTvGuideRow(
                     guide = guide,

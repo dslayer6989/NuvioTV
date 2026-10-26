@@ -617,7 +617,8 @@ private fun LiveTvGuideContent(
         } else {
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .weight(1f)
+                    .fillMaxWidth()
                     .padding(horizontal = horizontalPadding)
                     .onSizeChanged { viewportPx = (it.width - channelColumnPx).coerceAtLeast(0f) }
             ) {
