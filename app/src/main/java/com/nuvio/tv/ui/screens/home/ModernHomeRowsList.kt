@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import com.nuvio.tv.livetv.ui.LiveTvHomeRow
 import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -479,6 +480,10 @@ internal fun ModernHomeRowsList(
                         StableRef(mutableMapOf())
                     }
                 )
+            }
+
+            item(key = "live_tv_row", contentType = "live_tv_row") {
+                LiveTvHomeRow(horizontalPadding = MODERN_ROW_HEADER_FOCUS_INSET)
             }
         }
     }

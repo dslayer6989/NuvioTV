@@ -51,6 +51,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -83,7 +84,6 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -139,14 +139,13 @@ import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
 import androidx.tv.material3.contentColorFor
 import androidx.tv.material3.rememberDrawerState
-import coil3.compose.rememberAsyncImagePainter
-import coil3.request.ImageRequest
 import com.nuvio.tv.R
 import com.nuvio.tv.core.auth.AuthManager
 import com.nuvio.tv.core.auth.DeviceSessionRegistration
 import com.nuvio.tv.core.deeplink.DeepLinkHandler
 import com.nuvio.tv.core.deeplink.DeepLinkParser
 import com.nuvio.tv.core.player.PlayerWindowBackdrop
+import com.nuvio.tv.core.party.PartyRepository
 import com.nuvio.tv.core.profile.ProfileManager
 import com.nuvio.tv.core.sync.ProfileSyncService
 import com.nuvio.tv.core.sync.StartupSyncService
@@ -184,6 +183,7 @@ import com.nuvio.tv.ui.components.LocalAlwaysBackdropWithLogo
 import com.nuvio.tv.ui.components.ProfileAvatarCircle
 import com.nuvio.tv.ui.navigation.NuvioNavHost
 import com.nuvio.tv.ui.navigation.Screen
+import com.nuvio.tv.ui.screens.party.PartyEffects
 import com.nuvio.tv.ui.membership.LocalMemberAccess
 import com.nuvio.tv.ui.screens.account.AuthQrSignInScreen
 import com.nuvio.tv.ui.screens.addon.EssentialAddonSetupScreen
@@ -201,6 +201,7 @@ import com.nuvio.tv.ui.theme.brandWordmarkResource
 import com.nuvio.tv.ui.util.LocalFastHorizontalNavigationEnabled
 import com.nuvio.tv.ui.util.LocalRecompositionHighlighterEnabled
 import com.nuvio.tv.ui.util.rememberDrawerItemFocusRequesters
+import com.nuvio.tv.ui.util.rememberRawSvgPainter
 import com.nuvio.tv.updater.UpdateViewModel
 import com.nuvio.tv.updater.ui.UpdateBannerHost
 import dagger.hilt.android.AndroidEntryPoint
@@ -323,6 +324,9 @@ open class MainActivity : ComponentActivity() {
     @Inject
     lateinit var deepLinkHandler: DeepLinkHandler
 
+    @Inject
+    lateinit var partyRepository: PartyRepository
+
     private val pendingDeepLinkUrl = MutableStateFlow<String?>(null)
     private val pendingLaunchIntent = MutableStateFlow<Intent?>(null)
 
@@ -420,6 +424,8 @@ open class MainActivity : ComponentActivity() {
                     }
                 }
             }
+
+            PartyEffects(partyRepository)
 
             LaunchedEffect(hasSeenAuthQrOnFirstLaunch, authState) {
                 if (hasSeenAuthQrOnFirstLaunch == false && authState is AuthState.FullAccount) {
@@ -867,6 +873,7 @@ open class MainActivity : ComponentActivity() {
 
                     LaunchedEffect(actualRoute) {
                         optimisticRoute = null
+                        ambientIdleController.onInteraction()
                     }
 
                     // Auto-play next episode for EXTERNAL players: the tracker resolves the
@@ -993,6 +1000,12 @@ open class MainActivity : ComponentActivity() {
                                     launchSingleTop = true
                                 }
                             }
+                            is AppDeepLink.Party -> {
+                                pendingDeepLinkUrl.value = null
+                                navController.navigate(Screen.WatchParty.createRoute(deepLink.code)) {
+                                    launchSingleTop = true
+                                }
+                            }
                             is AppDeepLink.AddonInstall -> {
                                 navController.navigate(Screen.AddonManager.route) {
                                     launchSingleTop = true
@@ -1035,6 +1048,7 @@ open class MainActivity : ComponentActivity() {
                             add(Screen.Home.route)
                             add(Screen.Search.route)
                             add(Screen.Library.route)
+                            add(Screen.LiveTv.route)
                             add(Screen.Settings.route)
                             if (discoverLocation == DiscoverLocation.IN_SIDEBAR) {
                                 add(Screen.Discover.route)
@@ -1046,12 +1060,14 @@ open class MainActivity : ComponentActivity() {
                     val strNavDiscover = stringResource(R.string.nav_discover)
                     val strNavSearch = stringResource(R.string.nav_search)
                     val strNavLibrary = stringResource(R.string.nav_library)
+                    val strNavLiveTv = stringResource(R.string.live_tv_nav_label)
                     val strNavSettings = stringResource(R.string.nav_settings)
                     val drawerItems = remember(
                         strNavHome,
                         strNavDiscover,
                         strNavSearch,
                         strNavLibrary,
+                        strNavLiveTv,
                         strNavSettings,
                         discoverLocation
                     ) {
@@ -1084,6 +1100,13 @@ open class MainActivity : ComponentActivity() {
                                     route = Screen.Library.route,
                                     label = strNavLibrary,
                                     iconRes = R.raw.sidebar_library
+                                )
+                            )
+                            add(
+                                DrawerItem(
+                                    route = Screen.LiveTv.route,
+                                    label = strNavLiveTv,
+                                    icon = Icons.Default.LiveTv
                                 )
                             )
                             add(
@@ -1203,9 +1226,15 @@ open class MainActivity : ComponentActivity() {
                                 )
                             }
 
+                            val isTrailerPlaying by trailerPlayerPool.isTrailerPlaying.collectAsState()
+                            LaunchedEffect(isTrailerPlaying) {
+                                if (!isTrailerPlaying) ambientIdleController.onInteraction()
+                            }
                             AmbientModeHost(
                                 controller = ambientIdleController,
-                                allowed = currentRoute?.startsWith("player/") != true && autoNextOverlay == null,
+                                allowed = currentRoute?.startsWith("player/") != true &&
+                                    autoNextOverlay == null &&
+                                    !isTrailerPlaying,
                                 onShown = { trailerPlayerPool.stop() }
                             )
                         }
@@ -2411,18 +2440,6 @@ private fun DrawerItemIcon(
             modifier = iconModifier
         )
     }
-}
-
-@Composable
-private fun rememberRawSvgPainter(rawIconRes: Int): Painter {
-    val density = androidx.compose.ui.platform.LocalDensity.current
-    val sizePx = with(density) { NuvioTheme.spacing.xl.roundToPx() }
-    return rememberAsyncImagePainter(
-        model = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
-            .data(rawIconRes)
-            .size(sizePx)
-            .build()
-    )
 }
 
 object LocaleCache {

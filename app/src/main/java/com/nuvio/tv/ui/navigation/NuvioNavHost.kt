@@ -23,6 +23,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.nuvio.tv.core.build.AppFeaturePolicy
+import com.nuvio.tv.core.party.PartyMedia
 import com.nuvio.tv.domain.model.ExperienceMode
 import com.nuvio.tv.data.mediaserver.ServerCatalog
 import com.nuvio.tv.ui.screens.CatalogSeeAllScreen
@@ -32,11 +33,18 @@ import com.nuvio.tv.ui.screens.detail.MetaDetailsScreen
 import com.nuvio.tv.ui.screens.home.HomeScreen
 import com.nuvio.tv.ui.screens.addon.AddonManagerScreen
 import com.nuvio.tv.ui.screens.addon.CatalogOrderScreen
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.nuvio.tv.livetv.ui.LiveTvPlayRequestHandler
+import com.nuvio.tv.livetv.ui.LocalLiveTvOpenGuide
+import com.nuvio.tv.livetv.ui.LiveTvScreen
+import com.nuvio.tv.livetv.ui.LiveTvShellViewModel
+import com.nuvio.tv.livetv.ui.rememberPlayerLiveTvControls
 import com.nuvio.tv.ui.screens.library.LibraryScreen
 import com.nuvio.tv.ui.screens.player.PlayerExitReason
 import com.nuvio.tv.ui.screens.player.PlayerScreen
 import com.nuvio.tv.ui.screens.player.PostPlayRecommendation
 import com.nuvio.tv.ui.screens.player.playerBackOpensCurrentEpisodeStreams
+import com.nuvio.tv.ui.screens.party.PartyScreen
 import com.nuvio.tv.ui.screens.plugin.PluginScreen
 import com.nuvio.tv.ui.screens.search.DiscoverScreen
 import com.nuvio.tv.ui.screens.search.SearchScreen
@@ -65,7 +73,13 @@ fun NuvioNavHost(
     hideBuiltInHeaders: Boolean = false
 ) {
     PlaybackAvailabilityProvider {
-        PlaybackNavHost(navController, startDestination, hideBuiltInHeaders)
+        androidx.compose.runtime.CompositionLocalProvider(
+            LocalLiveTvOpenGuide provides {
+                navController.navigate(Screen.LiveTv.route) { launchSingleTop = true }
+            }
+        ) {
+            PlaybackNavHost(navController, startDestination, hideBuiltInHeaders)
+        }
     }
 }
 
@@ -84,6 +98,37 @@ private fun PlaybackNavHost(
     fun isPlayerToStream(from: String, to: String): Boolean {
         return from.startsWith("player/") && to.startsWith("stream/")
     }
+
+    fun openPartyMedia(media: PartyMedia) {
+        if (navController.currentDestination?.route?.startsWith("player/") == true) navController.popBackStack()
+        navController.navigate(
+            Screen.Stream.createRoute(
+                videoId = media.videoId ?: media.metaId,
+                contentType = media.type,
+                title = media.title,
+                poster = media.poster,
+                backdrop = media.background,
+                logo = media.logo,
+                season = media.season,
+                episode = media.episode,
+                episodeName = media.episodeTitle,
+                contentId = media.metaId,
+                contentName = media.title,
+                manualSelection = true
+            )
+        )
+    }
+
+    val liveTvShell: LiveTvShellViewModel = hiltViewModel()
+    // Live TV: channel requests from any screen open the player; channel up/down and backup
+    // sources replace the player that is already open.
+    val openLiveTvPlayer: (String) -> Unit = { route ->
+        val playerIsOpen = navController.currentDestination?.route?.startsWith("player/") == true
+        navController.navigate(route) {
+            if (playerIsOpen) popUpTo(Screen.Player.route) { inclusive = true }
+        }
+    }
+    LiveTvPlayRequestHandler(shell = liveTvShell, openPlayer = openLiveTvPlayer)
 
     NavHost(
         navController = navController,
@@ -615,7 +660,8 @@ private fun PlaybackNavHost(
                                 fileIdx = playbackInfo.fileIdx,
                                 sources = playbackInfo.sources,
                                 contentLanguage = playbackInfo.contentLanguage,
-                                profileId = playbackInfo.profileId
+                                profileId = playbackInfo.profileId,
+                                audioDelayMs = playbackInfo.audioDelayMs
                             )
                         )
                     }
@@ -656,7 +702,8 @@ private fun PlaybackNavHost(
                                 fileIdx = playbackInfo.fileIdx,
                                 sources = playbackInfo.sources,
                                 contentLanguage = playbackInfo.contentLanguage,
-                                profileId = playbackInfo.profileId
+                                profileId = playbackInfo.profileId,
+                                audioDelayMs = playbackInfo.audioDelayMs
                             )
                         ) {
                             popUpTo(Screen.Stream.route) { inclusive = true }
@@ -810,6 +857,11 @@ private fun PlaybackNavHost(
                     type = NavType.StringType
                     nullable = true
                     defaultValue = null
+                },
+                navArgument("audioDelayMs") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
                 }
             )
         ) { backStackEntry ->
@@ -856,9 +908,21 @@ private fun PlaybackNavHost(
                 }
             }
 
+            val liveTvControls = rememberPlayerLiveTvControls(
+                shell = liveTvShell,
+                contentType = backStackEntry.arguments?.getString("contentType"),
+                contentId = backStackEntry.arguments?.getString("contentId"),
+                openPlayer = openLiveTvPlayer
+            )
             PlayerScreen(
+                liveTv = liveTvControls,
                 onBackPress = { currentVideoId, currentSeason, currentEpisode, autoPlayEnabled, playbackCompleted ->
                     val args = backStackEntry.arguments
+                    if (liveTvControls != null) {
+                        // Live TV: Back goes straight back to wherever the channel was started from.
+                        navController.popBackStack()
+                        return@PlayerScreen
+                    }
                     val initialSeason = args?.getString("season")?.toIntOrNull()
                     val initialEpisode = args?.getString("episode")?.toIntOrNull()
                     val episodeChangedInPlace = (currentSeason != null || currentEpisode != null) &&
@@ -1080,6 +1144,7 @@ private fun PlaybackNavHost(
                         playOnLoad = false
                     )
                 },
+                onOpenPartyMedia = ::openPartyMedia,
                 onPlaybackErrorBack = {
                     val returnedToStream = popBackToStream()
                     if (!returnedToStream) {
@@ -1199,6 +1264,10 @@ private fun PlaybackNavHost(
             )
         }
 
+        composable(Screen.LiveTv.route) {
+            LiveTvScreen()
+        }
+
         composable(Screen.Settings.route) {
             SettingsScreen(
                 showBuiltInHeader = !hideBuiltInHeaders,
@@ -1211,7 +1280,24 @@ private fun PlaybackNavHost(
                 },
                 onNavigateToLicensesAttributions = {
                     navController.navigate(Screen.LicensesAttributions.route)
+                },
+                onNavigateToWatchParty = { navController.navigate(Screen.WatchParty.createRoute()) }
+            )
+        }
+
+        composable(
+            route = Screen.WatchParty.route,
+            arguments = listOf(
+                navArgument("code") {
+                    type = NavType.StringType
+                    defaultValue = ""
                 }
+            )
+        ) { backStackEntry ->
+            PartyScreen(
+                initialCode = backStackEntry.arguments?.getString("code").orEmpty(),
+                onBackPress = { navController.popBackStack() },
+                onWatch = ::openPartyMedia
             )
         }
 

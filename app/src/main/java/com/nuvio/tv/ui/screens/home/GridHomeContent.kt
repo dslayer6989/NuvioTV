@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import com.nuvio.tv.livetv.ui.LiveTvHomeRow
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -841,6 +842,14 @@ fun GridHomeContent(
                     }
                 }
             }
+            }
+
+            item(
+                key = "live_tv_row",
+                span = { GridItemSpan(maxLineSpan) },
+                contentType = "live_tv_row"
+            ) {
+                LiveTvHomeRow(horizontalPadding = 0.dp)
             }
 
         } // end LazyVerticalGrid
