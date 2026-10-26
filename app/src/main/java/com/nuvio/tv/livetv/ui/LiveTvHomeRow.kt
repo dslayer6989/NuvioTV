@@ -16,6 +16,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -36,14 +37,17 @@ import kotlinx.coroutines.delay
 
 private const val HomeRowMaxChannels = 12
 
+/** What the "Open guide" card does; provided by the navigation host so Home doesn't need to know. */
+val LocalLiveTvOpenGuide = staticCompositionLocalOf<() -> Unit> { {} }
+
 /**
  * A "Live Now" row for the Home screen: favorite channels first, each showing what is on right now.
  * Draws nothing until a guide has loaded, so Home looks unchanged for people who don't use Live TV.
  */
 @Composable
 fun LiveTvHomeRow(
-    onOpenGuide: () -> Unit,
     modifier: Modifier = Modifier,
+    onOpenGuide: () -> Unit = LocalLiveTvOpenGuide.current,
     horizontalPadding: Dp = 48.dp,
     viewModel: LiveTvViewModel = hiltViewModel()
 ) {

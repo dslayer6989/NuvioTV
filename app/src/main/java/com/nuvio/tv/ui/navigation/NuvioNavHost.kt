@@ -35,6 +35,7 @@ import com.nuvio.tv.ui.screens.addon.AddonManagerScreen
 import com.nuvio.tv.ui.screens.addon.CatalogOrderScreen
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.nuvio.tv.livetv.ui.LiveTvPlayRequestHandler
+import com.nuvio.tv.livetv.ui.LocalLiveTvOpenGuide
 import com.nuvio.tv.livetv.ui.LiveTvScreen
 import com.nuvio.tv.livetv.ui.LiveTvShellViewModel
 import com.nuvio.tv.livetv.ui.rememberPlayerLiveTvControls
@@ -72,7 +73,13 @@ fun NuvioNavHost(
     hideBuiltInHeaders: Boolean = false
 ) {
     PlaybackAvailabilityProvider {
-        PlaybackNavHost(navController, startDestination, hideBuiltInHeaders)
+        androidx.compose.runtime.CompositionLocalProvider(
+            LocalLiveTvOpenGuide provides {
+                navController.navigate(Screen.LiveTv.route) { launchSingleTop = true }
+            }
+        ) {
+            PlaybackNavHost(navController, startDestination, hideBuiltInHeaders)
+        }
     }
 }
 

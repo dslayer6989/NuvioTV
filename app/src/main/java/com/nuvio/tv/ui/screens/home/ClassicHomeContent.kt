@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
+import com.nuvio.tv.livetv.ui.LiveTvHomeRow
 import androidx.compose.foundation.lazy.LazyListPrefetchStrategy
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -932,6 +933,10 @@ fun ClassicHomeContent(
 
                 is HomeRow.PlaceholderCatalog -> { }
             }
+        }
+
+        item(key = "live_tv_row", contentType = "live_tv_row") {
+            LiveTvHomeRow(horizontalPadding = NuvioTheme.spacing.xxxl)
         }
     }
     }
